@@ -1,0 +1,13 @@
+Subject: {{ role }} at {{ company }} – Rutgers MS CS Candidate
+
+Hi {{ first_name }},
+
+I saw the {{ role }} posting and wanted to reach out directly — it looks like a strong match for the systems work I've been doing.
+
+I've spent the last year building concurrent systems in C/C++: a real-time multi-user platform with epoll (handles TCP connections, stateful sessions, LLM integration), a threading library with MLFQ/CFS schedulers, and FPGA research. Also worked at Syngenta on production data pipelines.
+
+Applied through your careers page. Would you have 15 minutes to chat about the role?
+
+Best,
+Mihir Kulkarni
+github.com/mihir965

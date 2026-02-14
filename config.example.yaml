@@ -1,0 +1,84 @@
+# Job Outreach Automation - Configuration Template
+# Copy this to config.yaml and fill in your actual values
+
+# ── Your Profile ──
+profile:
+  name: "Mihir Kulkarni"
+  email: "mihir.atul.kulkarni@gmail.com"
+  phone: "(510) 909-6142"
+  github: "https://github.com/mihir965"
+  linkedin: "https://www.linkedin.com/in/mihiratulkulkarni/"
+  graduation: "May 2026"
+  university: "Rutgers University New Brunswick"
+  degree: "MS Computer Science"
+  highlights:
+    - "Real-time counseling platform: multi-user TCP server in C with epoll, stateful room management, LLM integration via Flask backend (rebuilding in C++)"
+    - "Preemptive threading library with MLFQ and CFS schedulers from scratch (C, POSIX)"
+    - "FPGA research with Prof. Richard Martin on hardware-software interfaces"
+    - "Full-time engineer at Syngenta: production ETL pipelines (Python, AWS Glue, Redshift)"
+    - "Software intern at UniteGPS: full-stack SaaS development (MERN, React Native)"
+  target_roles:
+    - "Systems Engineer"
+    - "Software Engineer (C/C++)"
+    - "Quantitative Developer"
+    - "Infrastructure Engineer"
+    - "Platform Engineer"
+    - "Low Latency Developer"
+
+# ── SMTP (for sending emails) ──
+smtp:
+  server: "smtp.gmail.com"
+  port: 587
+  user: "${SMTP_USER}"           # Set via environment variable
+  password: "${SMTP_PASSWORD}"   # Gmail App Password - set via environment variable
+  from_name: "Mihir Kulkarni"
+
+# ── API Keys (all optional) ──
+apis:
+  hunter_key: "${HUNTER_API_KEY}"      # https://hunter.io (25 free/month)
+  apollo_key: "${APOLLO_API_KEY}"      # https://apollo.io (50 free/month)
+  anthropic_key: "${ANTHROPIC_API_KEY}" # For LLM email personalization
+
+# ── Job Monitoring ──
+monitor:
+  check_interval_hours: 6
+  search_keywords:
+    - "systems engineer"
+    - "software engineer"
+    - "c++"
+    - "infrastructure engineer"
+    - "low latency"
+    - "quantitative developer"
+    - "trading systems"
+    - "backend engineer"
+    - "distributed systems"
+  exclude_keywords:
+    - "staff"
+    - "principal"
+    - "director"
+    - "vp "
+    - "10+ years"
+    - "8+ years"
+    - "manager"
+  preferred_locations:
+    - "New York"
+    - "New Jersey"
+    - "Chicago"
+    - "Remote"
+    - "San Francisco"
+    - "Boston"
+
+# ── Outreach ──
+outreach:
+  daily_email_limit: 12
+  followup_after_days: 5
+  max_followups: 2
+  send_window_start: "08:00"
+  send_window_end: "17:00"
+  timezone: "America/New_York"
+
+# ── LLM Personalization ──
+llm:
+  model: "claude-sonnet-4-20250514"
+  enabled: true
+  max_tokens: 500

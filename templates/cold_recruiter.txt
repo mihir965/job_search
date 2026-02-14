@@ -1,0 +1,13 @@
+Subject: MS CS @ Rutgers – Systems/C++ Engineer
+
+Hi {{ first_name }},
+
+I'm Mihir, MS CS at Rutgers (May 2026), and I'm looking for systems engineering or infrastructure roles at {{ company }}.
+
+I've been deep in C/C++ systems work — built a real-time counseling platform (multi-user TCP server with epoll, stateful room management, LLM backend), implemented a threading library with custom schedulers (MLFQ/CFS), and I'm doing FPGA research. Also worked as a full-time engineer at Syngenta before grad school.
+
+Happy to send my resume or hop on a quick call to discuss relevant openings.
+
+Best,
+Mihir Kulkarni
+github.com/mihir965

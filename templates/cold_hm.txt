@@ -1,0 +1,15 @@
+Subject: Rutgers MS CS – Systems Engineer Interested in {{ company }}
+
+Hi {{ first_name }},
+
+I'm Mihir, MS CS at Rutgers (graduating May 2026). I'm reaching out because I'm looking for systems engineering roles and {{ company }} is at the top of my list.
+
+Most of my work has been in low-latency C/C++ — I built a real-time counseling platform where users connect via TCP, join rooms, and an LLM mediates their conversations. The backend handles concurrent connections with epoll, manages stateful multi-user sessions, and integrates with a Flask server for the AI layer. I'm currently rebuilding the whole thing in C++ and adding a CLI.
+
+I also implemented a threading library with MLFQ and CFS schedulers from scratch, and I'm doing FPGA research with Prof. Richard Martin. Before grad school, I worked at Syngenta building production data pipelines.
+
+{% if role %}Saw the {{ role }} posting — it seems like a great fit.{% else %}I'd love to learn more about what you're building.{% endif %} Would you have 15 minutes to chat this week?
+
+Best,
+Mihir Kulkarni
+github.com/mihir965
