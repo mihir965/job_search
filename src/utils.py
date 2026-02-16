@@ -127,6 +127,20 @@ def detect_job_board_type(url: str) -> str:
         return 'Generic'
 
 
+# ── Keyword Matching ──
+
+def matches_keywords(title: str, keywords: list[str]) -> bool:
+    """Check if title matches any search keywords (case-insensitive)."""
+    title_lower = title.lower()
+    return any(kw.lower() in title_lower for kw in keywords)
+
+
+def matches_exclude_keywords(title: str, keywords: list[str]) -> bool:
+    """Check if title matches any exclude keywords (case-insensitive)."""
+    title_lower = title.lower()
+    return any(kw.lower() in title_lower for kw in keywords)
+
+
 # ── Email Utilities ──
 
 def generate_email_patterns(first_name: str, last_name: str, domain: str) -> list[str]:

@@ -82,3 +82,14 @@ llm:
   model: "claude-sonnet-4-20250514"
   enabled: true
   max_tokens: 500
+
+# ── Job Aggregators (discover roles beyond pre-added company pages) ──
+aggregators:
+  adzuna:
+    enabled: false
+    app_id: "${ADZUNA_APP_ID}"       # https://developer.adzuna.com
+    app_key: "${ADZUNA_APP_KEY}"
+    country: "us"                     # Country code for API
+    results_per_page: 50
+    max_pages: 3
+    auto_add_companies: true          # Auto-add discovered companies to tracker

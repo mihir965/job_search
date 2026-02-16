@@ -42,6 +42,7 @@ class Tracker:
         self._create_global_tracker_sheet(wb)
         self._create_contacts_sheet(wb)
         self._create_outreach_log_sheet(wb)
+        self._create_email_drafts_sheet(wb)
         self._create_dashboard_sheet(wb)
 
         wb.save(self.tracker_path)
@@ -224,6 +225,32 @@ class Tracker:
 
         ws.column_dimensions['F'].width = 50
 
+    def _create_email_drafts_sheet(self, wb: Workbook):
+        """Create Email Drafts sheet for LLM-generated email review queue."""
+        ws = wb.create_sheet("Email Drafts")
+
+        headers = ["Date Created", "Company", "Contact Name", "Contact Email",
+                   "Email Type", "Subject Line", "Body", "Role Referenced",
+                   "Status", "Approved Date", "Notes"]
+        ws.append(headers)
+
+        # Style headers
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+            cell.fill = PatternFill(start_color="9B59B6", end_color="9B59B6", fill_type="solid")
+            cell.font = Font(bold=True, color="FFFFFF")
+
+        # Data validation
+        status_dv = DataValidation(
+            type="list",
+            formula1='"Pending Review,Approved,Rejected,Sent"'
+        )
+        ws.add_data_validation(status_dv)
+        status_dv.add("I2:I5000")
+
+        ws.column_dimensions['F'].width = 50
+        ws.column_dimensions['G'].width = 80
+
     def _create_dashboard_sheet(self, wb: Workbook):
         """Create Dashboard sheet with metrics."""
         ws = wb.create_sheet("Dashboard", 0)  # Make it first sheet
@@ -333,6 +360,31 @@ class Tracker:
 
     # ── Writing Operations ──
 
+    def add_company(self, name: str, tier: str = "Tier 3 - Backup",
+                    sector: str = "Other", careers_url: str = "",
+                    board_type: str = "Custom", sponsors: str = "Unknown",
+                    domain: str = "", notes: str = "") -> bool:
+        """Add a company to the Companies sheet if not already present. Returns True if added."""
+        with self.lock:
+            if not self.tracker_path.exists():
+                return False
+
+            wb = load_workbook(self.tracker_path)
+            ws = wb["Companies"]
+
+            # Check for duplicates
+            name_lower = name.lower()
+            for row in ws.iter_rows(min_row=2, max_col=1, values_only=True):
+                if row[0] and row[0].lower() == name_lower:
+                    wb.close()
+                    return False
+
+            ws.append([name, tier, sector, careers_url, board_type,
+                      sponsors, domain, notes])
+            wb.save(self.tracker_path)
+            logger.info(f"Added new company: {name}")
+            return True
+
     def add_new_roles(self, roles: List[Dict]):
         """Append roles to New Roles sheet."""
         if not roles:
@@ -433,6 +485,114 @@ class Tracker:
 
             wb.save(self.tracker_path)
             logger.info(f"Logged outreach to {entry.get('contact_name')} at {entry.get('company')}")
+
+    # ── Sheet Migration ──
+
+    def _ensure_sheet_exists(self, sheet_name: str):
+        """Ensure a sheet exists in the tracker, creating it if missing (for migration)."""
+        with self.lock:
+            if not self.tracker_path.exists():
+                return
+
+            wb = load_workbook(self.tracker_path)
+            if sheet_name not in wb.sheetnames:
+                create_method = f"_create_{sheet_name.lower().replace(' ', '_')}_sheet"
+                if hasattr(self, create_method):
+                    getattr(self, create_method)(wb)
+                    wb.save(self.tracker_path)
+                    logger.info(f"Migrated tracker: added '{sheet_name}' sheet")
+                else:
+                    logger.warning(f"No creation method for sheet '{sheet_name}'")
+            wb.close()
+
+    # ── Draft Queue Operations ──
+
+    def save_draft(self, draft: Dict):
+        """Save an LLM-generated email draft to the Email Drafts sheet."""
+        self._ensure_sheet_exists("Email Drafts")
+
+        with self.lock:
+            wb = load_workbook(self.tracker_path)
+            ws = wb["Email Drafts"]
+
+            ws.append([
+                draft.get("date_created", datetime.now().isoformat()),
+                draft.get("company"),
+                draft.get("contact_name"),
+                draft.get("contact_email"),
+                draft.get("email_type", "Role-Specific"),
+                draft.get("subject"),
+                draft.get("body"),
+                draft.get("role_referenced", ""),
+                "Pending Review",  # Status
+                "",  # Approved Date
+                draft.get("notes", "[LLM-generated]"),
+            ])
+
+            wb.save(self.tracker_path)
+            logger.info(f"Saved draft for {draft.get('contact_name')} at {draft.get('company')}")
+
+    def get_pending_drafts(self) -> List[Dict]:
+        """Get all drafts with status 'Pending Review'."""
+        return self._get_drafts_by_status("Pending Review")
+
+    def get_approved_drafts(self) -> List[Dict]:
+        """Get all drafts with status 'Approved'."""
+        return self._get_drafts_by_status("Approved")
+
+    def _get_drafts_by_status(self, status: str) -> List[Dict]:
+        """Get drafts filtered by status, including their row number for updates."""
+        self._ensure_sheet_exists("Email Drafts")
+
+        with self.lock:
+            if not self.tracker_path.exists():
+                return []
+
+            wb = load_workbook(self.tracker_path, read_only=True)
+            ws = wb["Email Drafts"]
+
+            headers = [cell.value for cell in ws[1]]
+            drafts = []
+
+            for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+                if not row[0]:
+                    continue
+
+                draft = dict(zip(headers, row))
+                if draft.get("Status") == status:
+                    draft["_row"] = row_idx
+                    drafts.append(draft)
+
+            wb.close()
+            return drafts
+
+    def approve_draft(self, row: int):
+        """Approve a draft by setting its status to 'Approved'."""
+        self._update_draft_status(row, "Approved", approved_date=datetime.now().isoformat())
+
+    def reject_draft(self, row: int):
+        """Reject a draft by setting its status to 'Rejected'."""
+        self._update_draft_status(row, "Rejected")
+
+    def mark_draft_sent(self, row: int):
+        """Mark a draft as sent."""
+        self._update_draft_status(row, "Sent")
+
+    def _update_draft_status(self, row: int, status: str, approved_date: str = ""):
+        """Update a draft's status in-place."""
+        self._ensure_sheet_exists("Email Drafts")
+
+        with self.lock:
+            wb = load_workbook(self.tracker_path)
+            ws = wb["Email Drafts"]
+
+            # Status is column I (9), Approved Date is column J (10)
+            ws.cell(row=row, column=9, value=status)
+            if approved_date:
+                ws.cell(row=row, column=10, value=approved_date)
+
+            wb.save(self.tracker_path)
+            logger.debug(f"Updated draft row {row} to status '{status}'")
 
 
 # Global singleton

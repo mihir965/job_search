@@ -10,7 +10,8 @@ from bs4 import BeautifulSoup
 
 from .config import config
 from .tracker import tracker
-from .utils import rate_limit, detect_job_board_type, normalize_company_name
+from .utils import rate_limit, detect_job_board_type, normalize_company_name, matches_keywords, matches_exclude_keywords
+from .aggregator import adzuna_aggregator
 
 logger = logging.getLogger(__name__)
 
@@ -40,26 +41,46 @@ class JobMonitor:
         with open(SEEN_JOBS_FILE, 'w') as f:
             json.dump({"seen_urls": list(self.seen_jobs)}, f, indent=2)
 
-    def monitor_all_companies(self) -> List[Dict]:
-        """Monitor all companies and return new matching jobs."""
-        companies = tracker.get_companies()
-        logger.info(f"Monitoring {len(companies)} companies for new roles...")
+    def monitor_all_companies(self, no_aggregators: bool = False,
+                               aggregators_only: bool = False) -> List[Dict]:
+        """Monitor all companies and return new matching jobs.
 
+        Args:
+            no_aggregators: Skip Adzuna aggregator, only scrape company career pages.
+            aggregators_only: Only run Adzuna aggregator, skip company career pages.
+        """
         all_new_jobs = []
 
-        for company in companies:
-            if not company.get("Careers URL"):
-                logger.debug(f"Skipping {company['Company']} - no careers URL")
-                continue
+        # Step 1: Scrape company career pages (unless aggregators_only)
+        if not aggregators_only:
+            companies = tracker.get_companies()
+            logger.info(f"Monitoring {len(companies)} companies for new roles...")
 
+            for company in companies:
+                if not company.get("Careers URL"):
+                    logger.debug(f"Skipping {company['Company']} - no careers URL")
+                    continue
+
+                try:
+                    jobs = self._scrape_company(company)
+                    if jobs:
+                        logger.info(f"Found {len(jobs)} new jobs at {company['Company']}")
+                        all_new_jobs.extend(jobs)
+                except Exception as e:
+                    logger.error(f"Failed to scrape {company['Company']}: {e}")
+                    continue
+
+        # Step 2: Run Adzuna aggregator (unless no_aggregators)
+        if not no_aggregators:
             try:
-                jobs = self._scrape_company(company)
-                if jobs:
-                    logger.info(f"Found {len(jobs)} new jobs at {company['Company']}")
-                    all_new_jobs.extend(jobs)
+                adzuna_jobs = adzuna_aggregator.search_jobs(self.seen_jobs)
+                if adzuna_jobs:
+                    logger.info(f"Adzuna aggregator found {len(adzuna_jobs)} new jobs")
+                    all_new_jobs.extend(adzuna_jobs)
+                    for job in adzuna_jobs:
+                        self.seen_jobs.add(job['url'])
             except Exception as e:
-                logger.error(f"Failed to scrape {company['Company']}: {e}")
-                continue
+                logger.error(f"Adzuna aggregator failed: {e}")
 
         # Save to tracker
         if all_new_jobs:
@@ -119,14 +140,12 @@ class JobMonitor:
     def _matches_keywords(self, title: str) -> bool:
         """Check if title matches any search keywords."""
         keywords = config.monitor.get('search_keywords', [])
-        title_lower = title.lower()
-        return any(kw.lower() in title_lower for kw in keywords)
+        return matches_keywords(title, keywords)
 
     def _matches_exclude_keywords(self, title: str) -> bool:
         """Check if title matches any exclude keywords."""
         keywords = config.monitor.get('exclude_keywords', [])
-        title_lower = title.lower()
-        return any(kw.lower() in title_lower for kw in keywords)
+        return matches_exclude_keywords(title, keywords)
 
     # ── Greenhouse ──
 

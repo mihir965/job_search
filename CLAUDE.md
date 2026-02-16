@@ -1,4 +1,73 @@
-# Job Outreach Automation System — CLAUDE.md
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Development Commands
+
+```bash
+# Setup
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+
+# Initialize tracker Excel + see next steps
+python -m src.main init
+
+# Core commands (require config.yaml with at least profile + smtp)
+python -m src.main monitor                    # Scrape career pages + Adzuna
+python -m src.main monitor --no-aggregators   # Skip Adzuna, scrape career pages only
+python -m src.main monitor --aggregators-only # Only run Adzuna aggregator
+python -m src.main contacts --all             # Enrich contacts for all companies
+python -m src.main contacts --company "Name"  # Single company
+python -m src.main outreach --preview         # Preview pending emails
+python -m src.main outreach --send            # Send (LLM emails go to draft queue)
+python -m src.main outreach --send -y         # Send without confirmation
+python -m src.main outreach --review-drafts   # Review pending LLM-generated drafts
+python -m src.main outreach --approve-all     # Approve all pending drafts
+python -m src.main outreach --send-approved   # Send approved drafts
+python -m src.main pipeline                   # monitor → contacts → outreach --preview
+python -m src.main pipeline --send            # Full pipeline with sending
+python -m src.main test-email                 # Verify SMTP works
+python -m src.main status                     # Print dashboard stats
+python -m src.main status --notify            # Print stats + send digest email
+
+# Systemd timers (CachyOS)
+bash scripts/setup-timers.sh                  # Install & enable all timers
+systemctl --user list-timers                  # Check timer schedules
+
+# All commands support: --config path/to/config.yaml  --verbose/-v
+```
+
+Python 3.11+ required (venv uses 3.14). No test suite exists yet — `tests/` directory is empty.
+
+## Architecture
+
+**Pipeline flow:** Job Monitor (scraper) → Contact Finder (enricher) → Email Outreach (sender)
+
+**Single source of truth:** `outreach_tracker.xlsx` — all state lives here plus `seen_jobs.json` for dedup. No database.
+
+**Key pattern — Global singletons:** Every module exposes a module-level singleton instance (`config`, `tracker`, `monitor`, `contact_finder`, `outreach`, `llm_generator`, `notifier`, `adzuna_aggregator`). These are imported directly (e.g., `from .tracker import tracker`).
+
+**Critical constraint — `tracker.py` is the ONLY module that touches Excel.** All other modules call tracker functions. Uses `filelock` to prevent concurrent write corruption.
+
+**Config resolution:** `config.py` loads `config.yaml`, resolves `${ENV_VAR}` references from environment (or `.env` via python-dotenv), exposes properties for each section. Singleton pattern — first instantiation wins.
+
+**Rate limiting:** `@rate_limit(min, max)` decorator in `utils.py` adds randomized `time.sleep` after each call. Applied to scraping and email sending methods.
+
+**Job board scrapers** (`monitor.py`): Greenhouse (JSON API), Lever (HTML), Ashby (JSON API), Workday (stub — not implemented), Generic HTML fallback. Board type auto-detected from URL or read from Companies sheet.
+
+**Email composition** (`outreach.py`): Uses Jinja2 templates from `templates/`. For role-specific emails, tries LLM generation first (`llm.py` via Anthropic API), falls back to template. Subject lines are embedded in template files (first line).
+
+**Email draft queue:** LLM-generated emails go to an "Email Drafts" sheet for review before sending. Template emails still send immediately. Drafts flow: compose → save_draft → review → approve → send_approved.
+
+**Adzuna aggregator** (`aggregator.py`): Searches Adzuna job API across all config keywords, auto-adds unknown companies. Runs as part of `monitor` unless `--no-aggregators`.
+
+**Systemd timers** (`systemd/`): 4 user-level timers for monitor (6h), contacts (daily 7AM), outreach (weekdays 9AM, sends approved drafts), status (daily 6PM). Setup via `scripts/setup-timers.sh`.
+
+**Incomplete/stub areas:** Workday scraper, Apollo.io integration, follow-up sending, `get_pending_outreach()`, `get_due_followups()`, Dashboard "this week" formula, `--daemon` mode for monitor.
+
+---
+
+# Job Outreach Automation System — Project Specification
 
 ## Who is this for
 
