@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(/home/mihir965/Documents/Developer/job_search/venv/bin/pip install:*)",
+      "WebSearch",
+      "WebFetch(domain:boards-api.greenhouse.io)",
+      "WebFetch(domain:jobs.lever.co)"
+    ]
+  }
+}
