@@ -36,8 +36,6 @@ smtp:
 # ── API Keys (all optional) ──
 apis:
   hunter_key: "${HUNTER_API_KEY}"      # https://hunter.io (25 free/month)
-  apollo_key: "${APOLLO_API_KEY}"      # https://apollo.io (50 free/month)
-  anthropic_key: "${ANTHROPIC_API_KEY}" # For LLM email personalization
 
 # ── Job Monitoring ──
 monitor:
@@ -138,25 +136,6 @@ monitor:
 # ── Outreach ──
 outreach:
   daily_email_limit: 12
-  followup_after_days: 5
-  max_followups: 2
   send_window_start: "08:00"
   send_window_end: "17:00"
   timezone: "America/New_York"
-
-# ── LLM Personalization ──
-llm:
-  model: "claude-sonnet-4-20250514"
-  enabled: true
-  max_tokens: 500
-
-# ── Job Aggregators (discover roles beyond pre-added company pages) ──
-aggregators:
-  adzuna:
-    enabled: false
-    app_id: "${ADZUNA_APP_ID}"       # https://developer.adzuna.com
-    app_key: "${ADZUNA_APP_KEY}"
-    country: "us"                     # Country code for API
-    results_per_page: 50
-    max_pages: 3
-    auto_add_companies: true          # Auto-add discovered companies to tracker

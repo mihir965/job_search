@@ -5,7 +5,7 @@ import time
 import random
 from functools import wraps
 from typing import Callable
-from datetime import datetime, timedelta
+from datetime import datetime
 import sys
 
 # ── Logging Setup ──
@@ -67,19 +67,6 @@ def is_business_hours(dt: datetime, start_hour: int, end_hour: int) -> bool:
     return start_hour <= dt.hour < end_hour
 
 
-def add_business_days(start_date: datetime, days: int) -> datetime:
-    """Add business days to a date (skips weekends)."""
-    current = start_date
-    days_added = 0
-
-    while days_added < days:
-        current += timedelta(days=1)
-        # Monday = 0, Sunday = 6
-        if current.weekday() < 5:  # Monday-Friday
-            days_added += 1
-
-    return current
-
 
 # ── String Utilities ──
 
@@ -102,30 +89,19 @@ def normalize_company_name(name: str) -> str:
     return result.strip().lower()
 
 
-def truncate_text(text: str, max_words: int = 300) -> str:
-    """Truncate text to max_words words."""
-    words = text.split()
-    if len(words) <= max_words:
-        return text
-    return ' '.join(words[:max_words]) + '...'
-
 
 # ── URL Utilities ──
 
 def detect_job_board_type(url: str) -> str:
-    """Detect job board type from URL."""
+    """Detect job board type from URL. Only Greenhouse and Ashby are supported."""
     url_lower = url.lower()
 
     if 'greenhouse.io' in url_lower or 'boards.greenhouse.io' in url_lower:
         return 'Greenhouse'
-    elif 'lever.co' in url_lower or 'jobs.lever.co' in url_lower:
-        return 'Lever'
     elif 'ashbyhq.com' in url_lower:
         return 'Ashby'
-    elif 'myworkdayjobs.com' in url_lower:
-        return 'Workday'
     else:
-        return 'Generic'
+        return 'Other'
 
 
 # ── Keyword Matching ──

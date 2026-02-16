@@ -1,12 +1,12 @@
 [Unit]
-Description=Job Search - Monitor job boards for new postings
+Description=Job Search - Full pipeline (scrape + contacts + outreach)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
 WorkingDirectory=/home/mihir965/Documents/Developer/job_search
-ExecStart=/home/mihir965/Documents/Developer/job_search/venv/bin/python -m src.main monitor
+ExecStart=/home/mihir965/Documents/Developer/job_search/venv/bin/python -m src.main pipeline --send -y
 EnvironmentFile=-/home/mihir965/.config/job-search/env
 StandardOutput=journal
 StandardError=journal

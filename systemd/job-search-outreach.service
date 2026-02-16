@@ -1,12 +1,12 @@
 [Unit]
-Description=Job Search - Send approved outreach emails
+Description=Job Search - Send outreach emails (catch-up)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
 WorkingDirectory=/home/mihir965/Documents/Developer/job_search
-ExecStart=/home/mihir965/Documents/Developer/job_search/venv/bin/python -m src.main outreach --send-approved -y
+ExecStart=/home/mihir965/Documents/Developer/job_search/venv/bin/python -m src.main outreach --send -y
 EnvironmentFile=-/home/mihir965/.config/job-search/env
 StandardOutput=journal
 StandardError=journal

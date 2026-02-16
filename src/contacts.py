@@ -86,10 +86,6 @@ class ContactFinder:
         hunter_contacts = self._search_hunter(domain)
         contacts.extend(hunter_contacts)
 
-        # Try Apollo.io
-        apollo_contacts = self._search_apollo(company_name)
-        contacts.extend(apollo_contacts)
-
         # Classify and save contacts
         for contact in contacts:
             contact['company'] = company_name
@@ -142,20 +138,6 @@ class ContactFinder:
         except Exception as e:
             logger.warning(f"Hunter.io search failed: {e}")
             return []
-
-    # ── Apollo.io ──
-
-    def _search_apollo(self, company_name: str) -> List[Dict]:
-        """Search for contacts using Apollo.io."""
-        api_key = config.apis.get('apollo_key')
-        if not api_key:
-            logger.debug("Apollo.io API key not set, skipping")
-            return []
-
-        # Apollo.io API is complex and requires authentication
-        # For now, return empty - you can implement this if you get an Apollo API key
-        logger.debug("Apollo.io integration not fully implemented")
-        return []
 
     # ── Helpers ──
 

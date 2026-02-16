@@ -1,11 +1,11 @@
 """Centralized Excel tracker operations - ALL Excel I/O goes through here."""
 import logging
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict
 from datetime import datetime
 from filelock import FileLock
 from openpyxl import Workbook, load_workbook
-from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.styles import Font, PatternFill
 from openpyxl.worksheet.datavalidation import DataValidation
 
 logger = logging.getLogger(__name__)
@@ -36,14 +36,11 @@ class Tracker:
         if 'Sheet' in wb.sheetnames:
             del wb['Sheet']
 
-        # Create all sheets
+        # Create all 4 sheets
         self._create_companies_sheet(wb)
         self._create_new_roles_sheet(wb)
-        self._create_global_tracker_sheet(wb)
         self._create_contacts_sheet(wb)
         self._create_outreach_log_sheet(wb)
-        self._create_email_drafts_sheet(wb)
-        self._create_dashboard_sheet(wb)
 
         wb.save(self.tracker_path)
         logger.info(f"Created tracker at {self.tracker_path}")
@@ -52,21 +49,19 @@ class Tracker:
         """Create Companies sheet with headers and data validation."""
         ws = wb.create_sheet("Companies")
 
-        # Headers
         headers = ["Company", "Tier", "Sector", "Careers URL", "Board Type",
                    "Sponsors H-1B", "Domain", "Notes"]
         ws.append(headers)
 
         # Style headers
         for cell in ws[1]:
-            cell.font = Font(bold=True)
-            cell.fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
             cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
 
         # Add data validation for dropdowns
         tier_dv = DataValidation(type="list", formula1='"Tier 1 - Dream,Tier 2 - Strong,Tier 3 - Backup"')
         sector_dv = DataValidation(type="list", formula1='"Quant/HFT,Systems/Infra,Fintech,FAANG,Startup,Other"')
-        board_dv = DataValidation(type="list", formula1='"Greenhouse,Lever,Ashby,Workday,Custom"')
+        board_dv = DataValidation(type="list", formula1='"Greenhouse,Ashby,Other"')
         h1b_dv = DataValidation(type="list", formula1='"Yes,No,Unknown"')
 
         ws.add_data_validation(tier_dv)
@@ -74,35 +69,35 @@ class Tracker:
         ws.add_data_validation(board_dv)
         ws.add_data_validation(h1b_dv)
 
-        tier_dv.add(f"B2:B1000")
-        sector_dv.add(f"C2:C1000")
-        board_dv.add(f"E2:E1000")
-        h1b_dv.add(f"F2:F1000")
+        tier_dv.add("B2:B1000")
+        sector_dv.add("C2:C1000")
+        board_dv.add("E2:E1000")
+        h1b_dv.add("F2:F1000")
 
         # Column widths
         ws.column_dimensions['A'].width = 25
         ws.column_dimensions['D'].width = 50
         ws.column_dimensions['H'].width = 30
 
-        # Add initial companies from CLAUDE.md spec
+        # Add initial companies
         companies_data = [
-            ["Jane Street", "Tier 1", "Quant/HFT", "", "Custom", "Yes", "janestreet.com", ""],
-            ["Citadel Securities", "Tier 1", "Quant/HFT", "", "Greenhouse", "Yes", "citadelsecurities.com", ""],
-            ["Hudson River Trading", "Tier 1", "Quant/HFT", "", "Custom", "Yes", "hudsonrivertrading.com", ""],
-            ["Two Sigma", "Tier 1", "Quant/HFT", "", "Greenhouse", "Yes", "twosigma.com", ""],
-            ["Tower Research Capital", "Tier 1", "Quant/HFT", "", "Custom", "Yes", "tower-research.com", ""],
-            ["Jump Trading", "Tier 1", "Quant/HFT", "", "Custom", "Yes", "jumptrading.com", ""],
-            ["D.E. Shaw", "Tier 1", "Quant/HFT", "", "Custom", "Yes", "deshaw.com", ""],
-            ["Five Rings", "Tier 1", "Quant/HFT", "", "Custom", "Yes", "fiverings.com", ""],
-            ["Virtu Financial", "Tier 2", "Quant/HFT", "", "Greenhouse", "Yes", "virtu.com", ""],
-            ["IMC Trading", "Tier 2", "Quant/HFT", "", "Greenhouse", "Yes", "imc.com", ""],
-            ["DRW", "Tier 2", "Quant/HFT", "", "Custom", "Yes", "drw.com", ""],
-            ["Optiver", "Tier 2", "Quant/HFT", "", "Greenhouse", "Yes", "optiver.com", ""],
-            ["Wolverine Trading", "Tier 2", "Quant/HFT", "", "Custom", "Unknown", "wolve.com", ""],
-            ["Akuna Capital", "Tier 2", "Quant/HFT", "", "Greenhouse", "Yes", "akunacapital.com", ""],
-            ["Susquehanna (SIG)", "Tier 2", "Quant/HFT", "", "Custom", "Yes", "sig.com", ""],
-            ["Cloudflare", "Tier 2", "Systems/Infra", "", "Greenhouse", "Yes", "cloudflare.com", ""],
-            ["Databricks", "Tier 2", "Systems/Infra", "", "Greenhouse", "Yes", "databricks.com", ""],
+            ["Jane Street", "Tier 1 - Dream", "Quant/HFT", "", "Other", "Yes", "janestreet.com", ""],
+            ["Citadel Securities", "Tier 1 - Dream", "Quant/HFT", "", "Greenhouse", "Yes", "citadelsecurities.com", ""],
+            ["Hudson River Trading", "Tier 1 - Dream", "Quant/HFT", "", "Other", "Yes", "hudsonrivertrading.com", ""],
+            ["Two Sigma", "Tier 1 - Dream", "Quant/HFT", "", "Greenhouse", "Yes", "twosigma.com", ""],
+            ["Tower Research Capital", "Tier 1 - Dream", "Quant/HFT", "", "Other", "Yes", "tower-research.com", ""],
+            ["Jump Trading", "Tier 1 - Dream", "Quant/HFT", "", "Other", "Yes", "jumptrading.com", ""],
+            ["D.E. Shaw", "Tier 1 - Dream", "Quant/HFT", "", "Other", "Yes", "deshaw.com", ""],
+            ["Five Rings", "Tier 1 - Dream", "Quant/HFT", "", "Other", "Yes", "fiverings.com", ""],
+            ["Virtu Financial", "Tier 2 - Strong", "Quant/HFT", "", "Greenhouse", "Yes", "virtu.com", ""],
+            ["IMC Trading", "Tier 2 - Strong", "Quant/HFT", "", "Greenhouse", "Yes", "imc.com", ""],
+            ["DRW", "Tier 2 - Strong", "Quant/HFT", "", "Other", "Yes", "drw.com", ""],
+            ["Optiver", "Tier 2 - Strong", "Quant/HFT", "", "Greenhouse", "Yes", "optiver.com", ""],
+            ["Wolverine Trading", "Tier 2 - Strong", "Quant/HFT", "", "Other", "Unknown", "wolve.com", ""],
+            ["Akuna Capital", "Tier 2 - Strong", "Quant/HFT", "", "Greenhouse", "Yes", "akunacapital.com", ""],
+            ["Susquehanna (SIG)", "Tier 2 - Strong", "Quant/HFT", "", "Other", "Yes", "sig.com", ""],
+            ["Cloudflare", "Tier 2 - Strong", "Systems/Infra", "", "Greenhouse", "Yes", "cloudflare.com", ""],
+            ["Databricks", "Tier 2 - Strong", "Systems/Infra", "", "Greenhouse", "Yes", "databricks.com", ""],
         ]
 
         for row_data in companies_data:
@@ -117,13 +112,10 @@ class Tracker:
                    "Outreach Sent?", "Notes"]
         ws.append(headers)
 
-        # Style headers
         for cell in ws[1]:
-            cell.font = Font(bold=True)
-            cell.fill = PatternFill(start_color="70AD47", end_color="70AD47", fill_type="solid")
             cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill(start_color="70AD47", end_color="70AD47", fill_type="solid")
 
-        # Data validation
         status_dv = DataValidation(type="list", formula1='"New,Reviewing,Applied,Skipped"')
         ws.add_data_validation(status_dv)
         status_dv.add("H2:H5000")
@@ -131,35 +123,6 @@ class Tracker:
         outreach_dv = DataValidation(type="list", formula1='"Yes,No"')
         ws.add_data_validation(outreach_dv)
         outreach_dv.add("K2:K5000")
-
-        # Column widths
-        ws.column_dimensions['C'].width = 40
-        ws.column_dimensions['E'].width = 50
-
-    def _create_global_tracker_sheet(self, wb: Workbook):
-        """Create Global Tracker sheet."""
-        ws = wb.create_sheet("Global Tracker")
-
-        headers = ["Date Found", "Company", "Role Title", "Location", "URL",
-                   "Status", "Applied Date", "HM Name", "HM Email",
-                   "Outreach Status", "Follow-up Due", "Notes"]
-        ws.append(headers)
-
-        # Style headers
-        for cell in ws[1]:
-            cell.font = Font(bold=True)
-            cell.fill = PatternFill(start_color="FFC000", end_color="FFC000", fill_type="solid")
-            cell.font = Font(bold=True, color="000000")
-
-        # Data validation
-        status_dv = DataValidation(type="list",
-                                   formula1='"New,Applied,Emailed HM,Phone Screen,Interview,Rejected,Offer,Skipped"')
-        ws.add_data_validation(status_dv)
-        status_dv.add("F2:F10000")
-
-        outreach_dv = DataValidation(type="list", formula1='"Not Sent,Sent,Replied,Meeting Scheduled"')
-        ws.add_data_validation(outreach_dv)
-        outreach_dv.add("J2:J10000")
 
         ws.column_dimensions['C'].width = 40
         ws.column_dimensions['E'].width = 50
@@ -172,13 +135,10 @@ class Tracker:
                    "Type", "Source", "Confidence", "Email Verified", "Date Found"]
         ws.append(headers)
 
-        # Style headers
         for cell in ws[1]:
-            cell.font = Font(bold=True)
-            cell.fill = PatternFill(start_color="5B9BD5", end_color="5B9BD5", fill_type="solid")
             cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill(start_color="5B9BD5", end_color="5B9BD5", fill_type="solid")
 
-        # Data validation
         type_dv = DataValidation(type="list", formula1='"Hiring Manager,Recruiter,Engineer,Other"')
         ws.add_data_validation(type_dv)
         type_dv.add("F2:F5000")
@@ -195,22 +155,19 @@ class Tracker:
         ws.column_dimensions['E'].width = 40
 
     def _create_outreach_log_sheet(self, wb: Workbook):
-        """Create Outreach Log sheet."""
+        """Create Outreach Log sheet (9 columns)."""
         ws = wb.create_sheet("Outreach Log")
 
         headers = ["Date Sent", "Company", "Contact Name", "Contact Email",
                    "Email Type", "Subject Line", "Role Referenced",
-                   "Status", "Follow-up Due", "LLM Generated?", "Notes"]
+                   "Status", "Notes"]
         ws.append(headers)
 
-        # Style headers
         for cell in ws[1]:
-            cell.font = Font(bold=True)
-            cell.fill = PatternFill(start_color="ED7D31", end_color="ED7D31", fill_type="solid")
             cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill(start_color="ED7D31", end_color="ED7D31", fill_type="solid")
 
-        # Data validation
-        type_dv = DataValidation(type="list", formula1='"Cold HM,Cold Recruiter,Role-Specific,Follow-up"')
+        type_dv = DataValidation(type="list", formula1='"Cold HM,Cold Recruiter,Role-Specific"')
         ws.add_data_validation(type_dv)
         type_dv.add("E2:E5000")
 
@@ -219,66 +176,7 @@ class Tracker:
         ws.add_data_validation(status_dv)
         status_dv.add("H2:H5000")
 
-        llm_dv = DataValidation(type="list", formula1='"Yes,No"')
-        ws.add_data_validation(llm_dv)
-        llm_dv.add("J2:J5000")
-
         ws.column_dimensions['F'].width = 50
-
-    def _create_email_drafts_sheet(self, wb: Workbook):
-        """Create Email Drafts sheet for LLM-generated email review queue."""
-        ws = wb.create_sheet("Email Drafts")
-
-        headers = ["Date Created", "Company", "Contact Name", "Contact Email",
-                   "Email Type", "Subject Line", "Body", "Role Referenced",
-                   "Status", "Approved Date", "Notes"]
-        ws.append(headers)
-
-        # Style headers
-        for cell in ws[1]:
-            cell.font = Font(bold=True)
-            cell.fill = PatternFill(start_color="9B59B6", end_color="9B59B6", fill_type="solid")
-            cell.font = Font(bold=True, color="FFFFFF")
-
-        # Data validation
-        status_dv = DataValidation(
-            type="list",
-            formula1='"Pending Review,Approved,Rejected,Sent"'
-        )
-        ws.add_data_validation(status_dv)
-        status_dv.add("I2:I5000")
-
-        ws.column_dimensions['F'].width = 50
-        ws.column_dimensions['G'].width = 80
-
-    def _create_dashboard_sheet(self, wb: Workbook):
-        """Create Dashboard sheet with metrics."""
-        ws = wb.create_sheet("Dashboard", 0)  # Make it first sheet
-
-        # Title
-        ws['A1'] = "Job Search Dashboard"
-        ws['A1'].font = Font(size=18, bold=True)
-
-        # Metrics
-        metrics = [
-            ("Total Companies Tracked", "=COUNTA(Companies!A:A)-1"),
-            ("Total Roles Found", "=COUNTA('Global Tracker'!A:A)-1"),
-            ("New Roles (This Week)", ""),  # TODO: Add formula
-            ("Roles - Applied", "=COUNTIF('Global Tracker'!F:F,\"Applied\")"),
-            ("Roles - Interviewing", "=COUNTIF('Global Tracker'!F:F,\"Interview\")+COUNTIF('Global Tracker'!F:F,\"Phone Screen\")"),
-            ("Outreach Sent", "=COUNTA('Outreach Log'!A:A)-1"),
-            ("Outreach - Replied", "=COUNTIF('Outreach Log'!H:H,\"Replied\")+COUNTIF('Outreach Log'!H:H,\"Meeting Scheduled\")"),
-            ("Response Rate", ""),  # TODO: Add formula
-        ]
-
-        row = 3
-        for label, formula in metrics:
-            ws[f'A{row}'] = label
-            ws[f'A{row}'].font = Font(bold=True)
-            if formula:
-                ws[f'B{row}'] = formula
-                ws[f'B{row}'].font = Font(size=14)
-            row += 1
 
     # ── Reading Operations ──
 
@@ -295,9 +193,8 @@ class Tracker:
             headers = [cell.value for cell in ws[1]]
 
             for row in ws.iter_rows(min_row=2, values_only=True):
-                if not row[0]:  # Skip empty rows
+                if not row[0]:
                     continue
-
                 company = dict(zip(headers, row))
                 companies.append(company)
 
@@ -317,9 +214,8 @@ class Tracker:
             headers = [cell.value for cell in ws[1]]
 
             for row in ws.iter_rows(min_row=2, values_only=True):
-                if not row[0]:  # Skip empty rows
+                if not row[0]:
                     continue
-
                 role = dict(zip(headers, row))
                 if role.get("Status") == "New":
                     roles.append(role)
@@ -343,8 +239,8 @@ class Tracker:
                     if not row[0]:
                         continue
                     company = row[0]
-                    contact_type = row[5] if len(row) > 5 else None  # Type column
-                    email = row[3] if len(row) > 3 else None  # Email column
+                    contact_type = row[5] if len(row) > 5 else None
+                    email = row[3] if len(row) > 3 else None
                     if contact_type == "Hiring Manager" and email:
                         companies_with_hm.add(company.lower())
 
@@ -386,20 +282,6 @@ class Tracker:
                 if contact_email:
                     emailed.add((contact_email.lower(), role_ref.lower()))
 
-            # Also exclude contacts with pending/approved drafts
-            emailed_drafts = set()
-            if "Email Drafts" in wb.sheetnames:
-                ws_drafts = wb["Email Drafts"]
-                for row in ws_drafts.iter_rows(min_row=2, values_only=True):
-                    if not row[0]:
-                        continue
-                    status = row[8]  # Status
-                    if status in ("Pending Review", "Approved"):
-                        email = row[3]  # Contact Email
-                        role = row[7] or ""  # Role Referenced
-                        if email:
-                            emailed_drafts.add((email.lower(), role.lower()))
-
             # 2. Check New Roles with HM Email populated but outreach not sent
             pending = []
             seen_keys = set()
@@ -407,9 +289,6 @@ class Tracker:
             for row in ws_roles.iter_rows(min_row=2, values_only=True):
                 if not row[0]:
                     continue
-                # Columns: Date Found, Company, Role Title, Location, URL,
-                #          Department, Board Type, Status, HM Name, HM Email,
-                #          Outreach Sent?, Notes
                 status = row[7]
                 hm_name = row[8]
                 hm_email = row[9]
@@ -422,7 +301,7 @@ class Tracker:
 
                 role_title = row[2] or ""
                 key = (hm_email.lower(), role_title.lower())
-                if key in emailed or key in emailed_drafts or key in seen_keys:
+                if key in emailed or key in seen_keys:
                     continue
 
                 seen_keys.add(key)
@@ -451,8 +330,8 @@ class Tracker:
                 if contact_type not in ("Hiring Manager", "Recruiter"):
                     continue
 
-                key = (email.lower(), "")  # Generic outreach (no specific role)
-                if key in emailed or key in emailed_drafts or key in seen_keys:
+                key = (email.lower(), "")
+                if key in emailed or key in seen_keys:
                     continue
 
                 seen_keys.add(key)
@@ -469,16 +348,11 @@ class Tracker:
             wb.close()
             return pending
 
-    def get_due_followups(self) -> List[Dict]:
-        """Get outreach entries that are due for follow-up."""
-        # For now, return empty - we'll implement after outreach module
-        return []
-
     # ── Writing Operations ──
 
     def add_company(self, name: str, tier: str = "Tier 3 - Backup",
                     sector: str = "Other", careers_url: str = "",
-                    board_type: str = "Custom", sponsors: str = "Unknown",
+                    board_type: str = "Other", sponsors: str = "Unknown",
                     domain: str = "", notes: str = "") -> bool:
         """Add a company to the Companies sheet if not already present. Returns True if added."""
         with self.lock:
@@ -500,6 +374,28 @@ class Tracker:
             wb.save(self.tracker_path)
             logger.info(f"Added new company: {name}")
             return True
+
+    def update_company_url(self, company_name: str, careers_url: str,
+                           board_type: str = "Other"):
+        """Update the Careers URL and Board Type for a company."""
+        with self.lock:
+            if not self.tracker_path.exists():
+                return
+
+            wb = load_workbook(self.tracker_path)
+            ws = wb["Companies"]
+
+            name_lower = company_name.lower()
+            for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+                if row[0] and row[0].lower() == name_lower:
+                    ws.cell(row=row_idx, column=4, value=careers_url)  # Careers URL
+                    ws.cell(row=row_idx, column=5, value=board_type)   # Board Type
+                    wb.save(self.tracker_path)
+                    logger.info(f"Updated {company_name}: URL={careers_url}, Board={board_type}")
+                    return
+
+            wb.close()
+            logger.warning(f"Company not found for URL update: {company_name}")
 
     def add_new_roles(self, roles: List[Dict]):
         """Append roles to New Roles sheet."""
@@ -529,34 +425,6 @@ class Tracker:
             wb.save(self.tracker_path)
             logger.info(f"Added {len(roles)} new roles to tracker")
 
-    def add_to_global_tracker(self, roles: List[Dict]):
-        """Append roles to Global Tracker sheet."""
-        if not roles:
-            return
-
-        with self.lock:
-            wb = load_workbook(self.tracker_path)
-            ws = wb["Global Tracker"]
-
-            for role in roles:
-                ws.append([
-                    role.get("date_found", datetime.now().isoformat()),
-                    role.get("company"),
-                    role.get("title"),
-                    role.get("location"),
-                    role.get("url"),
-                    "New",  # Status
-                    "",  # Applied Date
-                    "",  # HM Name
-                    "",  # HM Email
-                    "Not Sent",  # Outreach Status
-                    "",  # Follow-up Due
-                    role.get("notes", ""),
-                ])
-
-            wb.save(self.tracker_path)
-            logger.info(f"Added {len(roles)} roles to global tracker")
-
     def add_contact(self, contact: Dict):
         """Add a contact to the Contacts sheet."""
         with self.lock:
@@ -580,7 +448,7 @@ class Tracker:
             logger.debug(f"Added contact: {contact.get('name')} at {contact.get('company')}")
 
     def log_outreach(self, entry: Dict):
-        """Log an outreach email to Outreach Log sheet."""
+        """Log an outreach email to Outreach Log sheet (9 columns)."""
         with self.lock:
             wb = load_workbook(self.tracker_path)
             ws = wb["Outreach Log"]
@@ -594,121 +462,11 @@ class Tracker:
                 entry.get("subject"),
                 entry.get("role_referenced", ""),
                 "Sent",  # Status
-                entry.get("followup_due", ""),
-                "Yes" if entry.get("llm_generated") else "No",
                 entry.get("notes", ""),
             ])
 
             wb.save(self.tracker_path)
             logger.info(f"Logged outreach to {entry.get('contact_name')} at {entry.get('company')}")
-
-    # ── Sheet Migration ──
-
-    def _ensure_sheet_exists(self, sheet_name: str):
-        """Ensure a sheet exists in the tracker, creating it if missing (for migration)."""
-        with self.lock:
-            if not self.tracker_path.exists():
-                return
-
-            wb = load_workbook(self.tracker_path)
-            if sheet_name not in wb.sheetnames:
-                create_method = f"_create_{sheet_name.lower().replace(' ', '_')}_sheet"
-                if hasattr(self, create_method):
-                    getattr(self, create_method)(wb)
-                    wb.save(self.tracker_path)
-                    logger.info(f"Migrated tracker: added '{sheet_name}' sheet")
-                else:
-                    logger.warning(f"No creation method for sheet '{sheet_name}'")
-            wb.close()
-
-    # ── Draft Queue Operations ──
-
-    def save_draft(self, draft: Dict):
-        """Save an LLM-generated email draft to the Email Drafts sheet."""
-        self._ensure_sheet_exists("Email Drafts")
-
-        with self.lock:
-            wb = load_workbook(self.tracker_path)
-            ws = wb["Email Drafts"]
-
-            ws.append([
-                draft.get("date_created", datetime.now().isoformat()),
-                draft.get("company"),
-                draft.get("contact_name"),
-                draft.get("contact_email"),
-                draft.get("email_type", "Role-Specific"),
-                draft.get("subject"),
-                draft.get("body"),
-                draft.get("role_referenced", ""),
-                "Pending Review",  # Status
-                "",  # Approved Date
-                draft.get("notes", "[LLM-generated]"),
-            ])
-
-            wb.save(self.tracker_path)
-            logger.info(f"Saved draft for {draft.get('contact_name')} at {draft.get('company')}")
-
-    def get_pending_drafts(self) -> List[Dict]:
-        """Get all drafts with status 'Pending Review'."""
-        return self._get_drafts_by_status("Pending Review")
-
-    def get_approved_drafts(self) -> List[Dict]:
-        """Get all drafts with status 'Approved'."""
-        return self._get_drafts_by_status("Approved")
-
-    def _get_drafts_by_status(self, status: str) -> List[Dict]:
-        """Get drafts filtered by status, including their row number for updates."""
-        self._ensure_sheet_exists("Email Drafts")
-
-        with self.lock:
-            if not self.tracker_path.exists():
-                return []
-
-            wb = load_workbook(self.tracker_path, read_only=True)
-            ws = wb["Email Drafts"]
-
-            headers = [cell.value for cell in ws[1]]
-            drafts = []
-
-            for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-                if not row[0]:
-                    continue
-
-                draft = dict(zip(headers, row))
-                if draft.get("Status") == status:
-                    draft["_row"] = row_idx
-                    drafts.append(draft)
-
-            wb.close()
-            return drafts
-
-    def approve_draft(self, row: int):
-        """Approve a draft by setting its status to 'Approved'."""
-        self._update_draft_status(row, "Approved", approved_date=datetime.now().isoformat())
-
-    def reject_draft(self, row: int):
-        """Reject a draft by setting its status to 'Rejected'."""
-        self._update_draft_status(row, "Rejected")
-
-    def mark_draft_sent(self, row: int):
-        """Mark a draft as sent."""
-        self._update_draft_status(row, "Sent")
-
-    def _update_draft_status(self, row: int, status: str, approved_date: str = ""):
-        """Update a draft's status in-place."""
-        self._ensure_sheet_exists("Email Drafts")
-
-        with self.lock:
-            wb = load_workbook(self.tracker_path)
-            ws = wb["Email Drafts"]
-
-            # Status is column I (9), Approved Date is column J (10)
-            ws.cell(row=row, column=9, value=status)
-            if approved_date:
-                ws.cell(row=row, column=10, value=approved_date)
-
-            wb.save(self.tracker_path)
-            logger.debug(f"Updated draft row {row} to status '{status}'")
 
 
 # Global singleton

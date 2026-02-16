@@ -101,13 +101,6 @@ class Config:
     def outreach(self) -> Dict:
         return self._data.get('outreach', {})
 
-    @property
-    def llm(self) -> Dict:
-        return self._data.get('llm', {})
-
-    @property
-    def aggregators(self) -> Dict:
-        return self._data.get('aggregators', {})
 
     def validate(self) -> bool:
         """Check that required fields are present and valid."""
@@ -130,14 +123,6 @@ class Config:
         # Warn about missing optional API keys
         if not self.get('apis.hunter_key'):
             logger.warning("Hunter.io API key not set - contact enrichment will be limited")
-        if not self.get('apis.apollo_key'):
-            logger.warning("Apollo.io API key not set - contact enrichment will be limited")
-        if not self.get('apis.anthropic_key') and self.get('llm.enabled', True):
-            logger.warning("Anthropic API key not set - LLM email personalization disabled")
-
-        adzuna = self.get('aggregators.adzuna', {})
-        if adzuna and adzuna.get('enabled') and (not adzuna.get('app_id') or not adzuna.get('app_key')):
-            logger.warning("Adzuna enabled but app_id/app_key not set - aggregator will not work")
 
         if not self.get('smtp.user') or not self.get('smtp.password'):
             logger.warning("SMTP credentials not set - email sending will not work")

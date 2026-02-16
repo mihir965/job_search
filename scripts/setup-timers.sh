@@ -27,10 +27,6 @@ if [ ! -f "$ENV_FILE" ]; then
 # SMTP_USER=your_email@gmail.com
 # SMTP_PASSWORD=your_app_password
 # HUNTER_API_KEY=your_key
-# APOLLO_API_KEY=your_key
-# ANTHROPIC_API_KEY=your_key
-# ADZUNA_APP_ID=your_id
-# ADZUNA_APP_KEY=your_key
 ENVEOF
     echo "Created env template at $ENV_FILE"
     echo "  -> Edit this file with your API keys and SMTP credentials"
@@ -52,12 +48,10 @@ systemctl --user daemon-reload
 echo ""
 echo "Reloaded systemd user daemon"
 
-# Enable and start all timers
+# Enable and start all timers (2 timers: monitor + outreach)
 TIMERS=(
     job-search-monitor.timer
-    job-search-contacts.timer
     job-search-outreach.timer
-    job-search-status.timer
 )
 
 echo ""

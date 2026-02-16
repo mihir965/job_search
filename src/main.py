@@ -19,43 +19,40 @@ def cmd_init(args):
     """Initialize the tracker Excel file and config template."""
     logger.info("Initializing job search automation...")
 
-    # Create tracker
     tracker.create_tracker()
 
-    # Check if config exists
     config_path = Path("config.yaml")
     if not config_path.exists():
         logger.warning("config.yaml not found. Copy config.example.yaml to config.yaml and fill in your values.")
-        logger.info("Example: cp config.example.yaml config.yaml")
 
-    logger.info("✓ Initialization complete!")
+    logger.info("Initialization complete!")
     logger.info("")
     logger.info("Next steps:")
     logger.info("1. Copy config.example.yaml to config.yaml")
     logger.info("2. Fill in your SMTP credentials and API keys (optional)")
     logger.info("3. Add careers URLs to the Companies sheet in outreach_tracker.xlsx")
-    logger.info("4. Run: python -m src.main monitor")
+    logger.info("4. Run: python -m src.main discover-boards")
+    logger.info("5. Run: python -m src.main monitor")
 
 
 def cmd_monitor(args):
     """Monitor job boards for new postings."""
     logger.info("Starting job board monitoring...")
 
-    new_jobs = monitor.monitor_all_companies(
-        no_aggregators=getattr(args, 'no_aggregators', False),
-        aggregators_only=getattr(args, 'aggregators_only', False),
-    )
+    new_jobs = monitor.monitor_all_companies()
 
     if new_jobs:
-        logger.info(f"✓ Found {len(new_jobs)} new matching jobs")
+        logger.info(f"Found {len(new_jobs)} new matching jobs")
 
-        # Send notification
+        # Send tier-grouped digest notification
         if not args.no_notify:
-            notifier.send_new_roles_alert(new_jobs)
+            companies = tracker.get_companies()
+            tier_lookup = {c['Company']: c.get('Tier', '') for c in companies}
+            notifier.send_new_roles_digest(new_jobs, tier_lookup)
 
         # Print summary
         print(f"\nNew jobs found: {len(new_jobs)}")
-        for job in new_jobs[:10]:  # Show first 10
+        for job in new_jobs[:10]:
             print(f"  - {job['company']}: {job['title']}")
         if len(new_jobs) > 10:
             print(f"  ... and {len(new_jobs) - 10} more")
@@ -79,53 +76,17 @@ def cmd_contacts(args):
         logger.info("Enriching contacts for all companies...")
         contact_finder.enrich_all_companies()
 
-    logger.info("✓ Contact enrichment complete")
+    logger.info("Contact enrichment complete")
 
 
 def cmd_outreach(args):
     """Send outreach emails."""
     if args.preview:
-        logger.info("Previewing pending outreach...")
         outreach.preview_outreach()
-
-    elif args.review_drafts:
-        outreach.review_drafts()
-
-    elif args.approve_all:
-        pending = tracker.get_pending_drafts()
-        if not pending:
-            logger.info("No pending drafts to approve")
-            return
-
-        for draft in pending:
-            tracker.approve_draft(draft['_row'])
-
-        logger.info(f"Approved {len(pending)} drafts")
-        print(f"\nApproved {len(pending)} drafts. Send them with: python -m src.main outreach --send-approved")
-
-    elif args.send_approved:
-        logger.info("Sending approved drafts...")
-
-        if not args.yes:
-            approved = tracker.get_approved_drafts()
-            if not approved:
-                logger.info("No approved drafts to send")
-                return
-            response = input(f"Send {len(approved)} approved drafts? (yes/no): ")
-            if response.lower() != 'yes':
-                logger.info("Cancelled")
-                return
-
-        stats = outreach.send_approved_drafts(dry_run=False)
-        logger.info(f"Approved drafts: {stats['sent']} sent, {stats['failed']} failed")
-
-        if stats['sent'] > 0 and not args.no_notify:
-            notifier.send_outreach_summary(stats)
 
     elif args.send:
         logger.info("Sending outreach emails...")
 
-        # Confirmation
         if not args.yes:
             response = input("Are you sure you want to send emails? (yes/no): ")
             if response.lower() != 'yes':
@@ -133,39 +94,29 @@ def cmd_outreach(args):
                 return
 
         stats = outreach.send_outreach(dry_run=False)
-        drafted = stats.get('drafted', 0)
-        msg = f"Outreach complete: {stats['sent']} sent, {stats['failed']} failed, {stats['skipped']} skipped"
-        if drafted > 0:
-            msg += f", {drafted} drafted for review"
-        logger.info(f"✓ {msg}")
+        logger.info(f"Outreach complete: {stats['sent']} sent, {stats['failed']} failed, {stats['skipped']} skipped")
 
-        # Send summary
-        if (stats['sent'] > 0 or drafted > 0) and not args.no_notify:
+        if stats['sent'] > 0 and not args.no_notify:
             notifier.send_outreach_summary(stats)
 
-        if drafted > 0:
-            print(f"\n{drafted} LLM-generated emails saved as drafts.")
-            print(f"Review: python -m src.main outreach --review-drafts")
-
-    elif args.followup:
-        logger.info("Sending follow-up emails...")
-        logger.warning("Follow-up feature not yet implemented")
-
     else:
-        logger.error("Must specify --preview, --send, --followup, --review-drafts, --approve-all, or --send-approved")
+        logger.error("Must specify --preview or --send")
 
 
 def cmd_pipeline(args):
-    """Run full pipeline: monitor → contacts → outreach."""
+    """Run full pipeline: monitor -> contacts -> outreach."""
     logger.info("Running full pipeline...")
 
     # Step 1: Monitor
     logger.info("Step 1: Monitoring job boards...")
-    new_jobs = monitor.monitor_all_companies(
-        no_aggregators=getattr(args, 'no_aggregators', False),
-        aggregators_only=getattr(args, 'aggregators_only', False),
-    )
+    new_jobs = monitor.monitor_all_companies()
     logger.info(f"Found {len(new_jobs)} new jobs")
+
+    # Send digest
+    if new_jobs:
+        companies = tracker.get_companies()
+        tier_lookup = {c['Company']: c.get('Tier', '') for c in companies}
+        notifier.send_new_roles_digest(new_jobs, tier_lookup)
 
     # Step 2: Contacts
     logger.info("Step 2: Enriching contacts...")
@@ -181,19 +132,38 @@ def cmd_pipeline(args):
                 return
 
         stats = outreach.send_outreach(dry_run=False)
-        drafted = stats.get('drafted', 0)
-        logger.info(f"✓ Pipeline complete: {stats['sent']} emails sent, {drafted} drafted")
+        logger.info(f"Pipeline complete: {stats['sent']} emails sent")
     else:
         logger.info("Step 3: Preview outreach...")
         outreach.preview_outreach()
 
-    # Check for pending drafts and notify
-    pending_drafts = tracker.get_pending_drafts()
-    if pending_drafts:
-        logger.info(f"{len(pending_drafts)} LLM-generated drafts awaiting review")
-        notifier.send_draft_review_request(pending_drafts)
+    logger.info("Pipeline complete")
 
-    logger.info("✓ Pipeline complete")
+
+def cmd_discover_boards(args):
+    """Discover Greenhouse/Ashby board URLs for companies."""
+    from .discover import board_discoverer
+
+    if args.input:
+        # Read company names from file
+        input_path = Path(args.input)
+        if not input_path.exists():
+            logger.error(f"File not found: {args.input}")
+            return
+        company_names = [line.strip() for line in input_path.read_text().splitlines() if line.strip()]
+        logger.info(f"Loaded {len(company_names)} companies from {args.input}")
+    else:
+        # Use companies from tracker that are missing Careers URL
+        company_names = None  # discover_all will handle this
+
+    results = board_discoverer.discover_all(company_names)
+
+    if results:
+        print(f"\nDiscovered {len(results)} boards:")
+        for r in results:
+            print(f"  {r['company']}: {r['board_type']} ({r['job_count']} jobs) -> {r['careers_url']}")
+    else:
+        print("\nNo new boards discovered.")
 
 
 def cmd_test_email(args):
@@ -211,29 +181,28 @@ def cmd_test_email(args):
         server.starttls()
         server.login(smtp_config['user'], smtp_config['password'])
         server.quit()
-        logger.info("✓ SMTP configuration is valid")
+        logger.info("SMTP configuration is valid")
     except Exception as e:
-        logger.error(f"✗ SMTP test failed: {e}")
+        logger.error(f"SMTP test failed: {e}")
 
 
 def cmd_status(args):
     """Print dashboard statistics."""
-    logger.info("Fetching status...")
-
     companies = tracker.get_companies()
     new_roles = tracker.get_new_roles()
-    pending_drafts = tracker.get_pending_drafts()
 
     stats = {
         'companies_tracked': len(companies),
         'new_roles': len(new_roles),
-        'pending_drafts': len(pending_drafts),
     }
 
+    # Count companies with careers URLs
+    with_urls = sum(1 for c in companies if c.get('Careers URL'))
+
     print(f"\n  Job Search Status\n")
-    print(f"Companies tracked:    {stats['companies_tracked']}")
-    print(f"New roles (unread):   {stats['new_roles']}")
-    print(f"Pending email drafts: {stats['pending_drafts']}")
+    print(f"Companies tracked:       {stats['companies_tracked']}")
+    print(f"  with Careers URL:      {with_urls}")
+    print(f"New roles (unread):      {stats['new_roles']}")
     print(f"\nFor detailed stats, open outreach_tracker.xlsx")
 
     if getattr(args, 'notify', False):
@@ -251,13 +220,11 @@ def main():
     subparsers = parser.add_subparsers(dest='command', help='Commands')
 
     # init
-    parser_init = subparsers.add_parser('init', help='Initialize tracker and config')
+    subparsers.add_parser('init', help='Initialize tracker and config')
 
     # monitor
     parser_monitor = subparsers.add_parser('monitor', help='Monitor job boards')
     parser_monitor.add_argument('--no-notify', action='store_true', help='Don\'t send notification email')
-    parser_monitor.add_argument('--no-aggregators', action='store_true', help='Skip Adzuna aggregator')
-    parser_monitor.add_argument('--aggregators-only', action='store_true', help='Only run Adzuna aggregator')
 
     # contacts
     parser_contacts = subparsers.add_parser('contacts', help='Find hiring manager contacts')
@@ -267,10 +234,6 @@ def main():
     parser_outreach = subparsers.add_parser('outreach', help='Send outreach emails')
     parser_outreach.add_argument('--preview', action='store_true', help='Preview pending emails')
     parser_outreach.add_argument('--send', action='store_true', help='Send pending emails')
-    parser_outreach.add_argument('--followup', action='store_true', help='Send follow-up emails')
-    parser_outreach.add_argument('--review-drafts', action='store_true', help='Review pending LLM drafts')
-    parser_outreach.add_argument('--approve-all', action='store_true', help='Approve all pending drafts')
-    parser_outreach.add_argument('--send-approved', action='store_true', help='Send approved drafts')
     parser_outreach.add_argument('--yes', '-y', action='store_true', help='Skip confirmation')
     parser_outreach.add_argument('--no-notify', action='store_true', help='Don\'t send summary email')
 
@@ -278,11 +241,13 @@ def main():
     parser_pipeline = subparsers.add_parser('pipeline', help='Run full pipeline')
     parser_pipeline.add_argument('--send', action='store_true', help='Send emails (default: preview)')
     parser_pipeline.add_argument('--yes', '-y', action='store_true', help='Skip confirmation')
-    parser_pipeline.add_argument('--no-aggregators', action='store_true', help='Skip Adzuna aggregator')
-    parser_pipeline.add_argument('--aggregators-only', action='store_true', help='Only run Adzuna aggregator')
+
+    # discover-boards
+    parser_discover = subparsers.add_parser('discover-boards', help='Discover Greenhouse/Ashby board URLs')
+    parser_discover.add_argument('--input', type=str, help='File with company names (one per line)')
 
     # test-email
-    parser_test = subparsers.add_parser('test-email', help='Test SMTP configuration')
+    subparsers.add_parser('test-email', help='Test SMTP configuration')
 
     # status
     parser_status = subparsers.add_parser('status', help='Show dashboard status')
@@ -294,13 +259,12 @@ def main():
     setup_logging(verbose=args.verbose)
 
     # Load config (if not init command)
-    if args.command != 'init':
+    if args.command and args.command != 'init':
         if args.config:
             from .config import Config
             global config
             config = Config(args.config)
 
-        # Check if config was loaded
         if not config._loaded:
             logger.error("Config file not found. Run: python -m src.main init")
             sys.exit(1)
@@ -310,20 +274,20 @@ def main():
             sys.exit(1)
 
     # Dispatch commands
-    if args.command == 'init':
-        cmd_init(args)
-    elif args.command == 'monitor':
-        cmd_monitor(args)
-    elif args.command == 'contacts':
-        cmd_contacts(args)
-    elif args.command == 'outreach':
-        cmd_outreach(args)
-    elif args.command == 'pipeline':
-        cmd_pipeline(args)
-    elif args.command == 'test-email':
-        cmd_test_email(args)
-    elif args.command == 'status':
-        cmd_status(args)
+    commands = {
+        'init': cmd_init,
+        'monitor': cmd_monitor,
+        'contacts': cmd_contacts,
+        'outreach': cmd_outreach,
+        'pipeline': cmd_pipeline,
+        'discover-boards': cmd_discover_boards,
+        'test-email': cmd_test_email,
+        'status': cmd_status,
+    }
+
+    handler = commands.get(args.command)
+    if handler:
+        handler(args)
     else:
         parser.print_help()
 
