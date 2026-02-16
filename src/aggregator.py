@@ -7,7 +7,7 @@ import requests
 
 from .config import config
 from .tracker import tracker
-from .utils import rate_limit, matches_keywords, matches_exclude_keywords
+from .utils import rate_limit, matches_keywords, matches_exclude_keywords, is_us_location, is_valid_engineering_role
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,8 @@ class AdzunaAggregator:
             logger.warning("Adzuna aggregator not enabled or missing credentials - skipping")
             return []
 
-        keywords = config.monitor.get('search_keywords', [])
+        # Use Adzuna-specific keywords if configured, otherwise fall back to monitor keywords
+        keywords = self._config.get('search_keywords') or config.monitor.get('search_keywords', [])
         exclude = config.monitor.get('exclude_keywords', [])
         all_jobs: Dict[str, Dict] = {}  # url -> job, for dedup across keywords
 
@@ -60,6 +61,11 @@ class AdzunaAggregator:
                 continue
             if matches_exclude_keywords(job['title'], exclude):
                 continue
+            if not is_us_location(job.get('location', '')):
+                continue
+            if not is_valid_engineering_role(job['title']):
+                logger.debug(f"Adzuna: skipping non-engineering role: {job['title']}")
+                continue
 
             job['date_found'] = datetime.now().isoformat()
             job['source'] = 'Adzuna'
@@ -77,13 +83,37 @@ class AdzunaAggregator:
 
     @rate_limit(1, 2)
     def _search_keyword(self, keyword: str) -> List[Dict]:
-        """Query Adzuna API for a single keyword. Returns list of job dicts."""
+        """Query Adzuna API for a single keyword across all preferred locations."""
+        cfg = self._config
+        locations = config.monitor.get('preferred_locations', [])
+
+        # Search each preferred location separately (Adzuna accepts one location per request)
+        # If no locations configured, search without location filter once
+        location_queries = locations if locations else [None]
+
+        all_results = []
+        seen_urls: set = set()
+
+        for location in location_queries:
+            results = self._search_keyword_location(keyword, location)
+            for job in results:
+                url = job.get('url', '')
+                if url and url not in seen_urls:
+                    seen_urls.add(url)
+                    all_results.append(job)
+
+        logger.debug(f"Adzuna: '{keyword}' returned {len(all_results)} results across {len(location_queries)} locations")
+        return all_results
+
+    @rate_limit(0.5, 1)
+    def _search_keyword_location(self, keyword: str, location: str | None) -> List[Dict]:
+        """Query Adzuna API for a single keyword + location. Returns list of job dicts."""
         cfg = self._config
         country = cfg.get('country', 'us')
         results_per_page = cfg.get('results_per_page', 50)
         max_pages = cfg.get('max_pages', 3)
 
-        all_results = []
+        results_list = []
 
         for page in range(1, max_pages + 1):
             params = {
@@ -94,10 +124,8 @@ class AdzunaAggregator:
                 'content-type': 'application/json',
             }
 
-            # Add location filter if configured
-            locations = config.monitor.get('preferred_locations', [])
-            if locations:
-                params['where'] = locations[0]  # Adzuna takes one location
+            if location:
+                params['where'] = location
 
             url = f"https://api.adzuna.com/v1/api/jobs/{country}/search/{page}"
 
@@ -111,18 +139,16 @@ class AdzunaAggregator:
                     break
 
                 for result in results:
-                    all_results.append(self._parse_result(result))
+                    results_list.append(self._parse_result(result))
 
-                # Stop if fewer results than requested (last page)
                 if len(results) < results_per_page:
                     break
 
             except Exception as e:
-                logger.warning(f"Adzuna API page {page} failed for '{keyword}': {e}")
+                logger.warning(f"Adzuna API page {page} failed for '{keyword}' in '{location}': {e}")
                 break
 
-        logger.debug(f"Adzuna: '{keyword}' returned {len(all_results)} results")
-        return all_results
+        return results_list
 
     def _parse_result(self, result: Dict) -> Dict:
         """Convert Adzuna API result to standard job schema."""

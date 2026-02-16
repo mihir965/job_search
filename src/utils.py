@@ -1,5 +1,6 @@
 """Shared utility functions."""
 import logging
+import re
 import time
 import random
 from functools import wraps
@@ -139,6 +140,229 @@ def matches_exclude_keywords(title: str, keywords: list[str]) -> bool:
     """Check if title matches any exclude keywords (case-insensitive)."""
     title_lower = title.lower()
     return any(kw.lower() in title_lower for kw in keywords)
+
+
+# Valid engineering/technical role keywords — title must contain at least one
+_VALID_ROLE_KEYWORDS = [
+    "engineer", "developer", "swe", "sde",
+    "programmer", "architect",  # architect is exclude but kept here for completeness
+    "devops", "sre", "reliability",
+    "quant", "quantitative",
+    "hft", "trading",  # trading roles at HFT firms
+    "kernel", "fpga", "firmware", "embedded",
+    "researcher",  # systems researcher
+    "linux",
+]
+
+
+def is_valid_engineering_role(title: str) -> bool:
+    """Check if a job title represents an actual engineering/dev role.
+
+    Prevents non-engineering roles (HR, marketing, finance, etc.) that happen
+    to match a search keyword from slipping through.
+    """
+    title_lower = title.lower()
+    return any(kw in title_lower for kw in _VALID_ROLE_KEYWORDS)
+
+
+# Regex to detect experience requirements like "5+ years", "5-10 years", "five years"
+_EXPERIENCE_RE = re.compile(
+    r'(\d+)\s*[\+\-–—]\s*(?:\d+\s*)?(?:years?|yrs?)',
+    re.IGNORECASE,
+)
+
+_WORD_TO_NUM = {
+    "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+    "eight": 8, "nine": 9, "ten": 10,
+}
+_WORD_EXPERIENCE_RE = re.compile(
+    r'(' + '|'.join(_WORD_TO_NUM.keys()) + r')\s*(?:\+\s*)?(?:years?|yrs?)',
+    re.IGNORECASE,
+)
+
+
+def detect_min_experience_years(text: str) -> int:
+    """Extract the minimum years of experience required from text. Returns 0 if none found."""
+    if not text:
+        return 0
+
+    # Try numeric patterns first: "5+ years", "5-10 years"
+    matches = _EXPERIENCE_RE.findall(text)
+    if matches:
+        return min(int(m) for m in matches)
+
+    # Try word patterns: "five years"
+    word_matches = _WORD_EXPERIENCE_RE.findall(text.lower())
+    if word_matches:
+        return min(_WORD_TO_NUM.get(w.lower(), 0) for w in word_matches)
+
+    return 0
+
+
+# Tier scores for company prioritization
+TIER_SCORES = {
+    "Tier 1 - Dream": 30,
+    "Tier 2 - Strong": 20,
+    "Tier 3 - Backup": 5,
+}
+
+# Signals that a role is new-grad friendly (bonus points)
+NEW_GRAD_SIGNALS = [
+    "new grad", "new graduate", "entry level", "entry-level",
+    "junior", "associate", "early career", "campus", "university",
+    "0-2 years", "0-1 years", "1-2 years", "2026",
+]
+
+# Strong role-title matches — systems/low-level get highest score
+TIER1_ROLE_SIGNALS = [
+    "systems engineer", "quantitative developer", "quant developer",
+    "low latency", "infrastructure engineer", "platform engineer",
+    "c++ engineer", "c++ developer", "embedded engineer",
+    "kernel", "fpga", "firmware",
+]
+
+# Good SWE roles — broad match
+TIER2_ROLE_SIGNALS = [
+    "software engineer", "software developer", "sde",
+    "backend engineer", "full stack", "fullstack",
+    "site reliability", "sre", "devops",
+    "cloud engineer", "production engineer",
+    "data engineer", "security engineer",
+    "tools engineer", "build engineer", "release engineer",
+    "application engineer",
+]
+
+
+def score_job_relevance(job: dict, company_tier: str = "") -> int:
+    """Score a job's relevance (higher = better). Used to rank and cap results.
+
+    Scoring breakdown:
+      +30/20/5  company tier bonus
+      +40       new grad / entry-level signal in title
+      +20       tier-1 role match (systems/low-latency)
+      +12       tier-2 role match (general SWE)
+      -50       non-US location
+      -40       internship / co-op
+      -30       high experience requirement (5+ years)
+      -20       not a recognizable engineering role
+    """
+    title_lower = (job.get('title') or '').lower()
+    location = (job.get('location') or '').lower()
+    score = 0
+
+    # Company tier bonus
+    score += TIER_SCORES.get(company_tier, 0)
+
+    # New grad signals (strongest positive signal)
+    for signal in NEW_GRAD_SIGNALS:
+        if signal in title_lower:
+            score += 40
+            break
+
+    # Tier 1 role match (systems/low-level — Mihir's strength)
+    for signal in TIER1_ROLE_SIGNALS:
+        if signal in title_lower:
+            score += 20
+            break
+
+    # Tier 2 role match (general SWE — still good)
+    for signal in TIER2_ROLE_SIGNALS:
+        if signal in title_lower:
+            score += 12
+            break
+
+    # ── Penalties ──
+
+    # Non-US location
+    if location and not is_us_location(location):
+        score -= 50
+
+    # Internship / co-op in title
+    _intern_signals = ["intern", "internship", "co-op", "coop", "summer analyst"]
+    if any(sig in title_lower for sig in _intern_signals):
+        score -= 40
+
+    # High experience requirement in title
+    min_exp = detect_min_experience_years(title_lower)
+    if min_exp >= 5:
+        score -= 30
+    elif min_exp >= 3:
+        score -= 15
+
+    # Not a recognizable engineering role
+    if not is_valid_engineering_role(title_lower):
+        score -= 20
+
+    return score
+
+
+# Known non-US location strings to reject
+_NON_US_LOCATIONS = [
+    "london", "uk", "united kingdom", "england",
+    "dublin", "ireland",
+    "singapore",
+    "hong kong",
+    "tokyo", "japan",
+    "sydney", "melbourne", "australia",
+    "amsterdam", "netherlands",
+    "paris", "france",
+    "berlin", "munich", "germany",
+    "zurich", "switzerland",
+    "toronto", "vancouver", "montreal", "canada",
+    "bangalore", "mumbai", "hyderabad", "india",
+    "shanghai", "beijing", "china",
+    "são paulo", "brazil",
+    "aarhus", "denmark",
+    "tel aviv", "israel",
+    "warsaw", "poland",
+    "prague", "czech",
+    "budapest", "hungary",
+    "bucharest", "romania",
+    "dubai", "uae",
+    "emea", "apac",
+]
+
+# US state abbreviations and cities to confirm as US
+_US_SIGNALS = [
+    "new york", "ny", "nyc", "manhattan",
+    "chicago", "il",
+    "san francisco", "sf", "california", "ca",
+    "boston", "ma", "massachusetts",
+    "new jersey", "nj",
+    "seattle", "wa", "washington",
+    "austin", "tx", "texas", "dallas", "houston",
+    "remote", "united states", "usa", "u.s.",
+    "los angeles", "la",
+    "atlanta", "ga",
+    "denver", "co", "colorado",
+    "miami", "fl", "florida",
+    "philadelphia", "pa",
+    "pittsburgh",
+    "portland", "or",
+    "raleigh", "nc",
+    "minneapolis", "mn",
+]
+
+
+def is_us_location(location: str) -> bool:
+    """Check if a job location is in the US. Returns True if US or unknown/empty."""
+    if not location:
+        return True  # No location info — don't filter out
+
+    loc_lower = location.lower()
+
+    # Explicit non-US match → reject
+    for non_us in _NON_US_LOCATIONS:
+        if non_us in loc_lower:
+            return False
+
+    # If it has a US signal → accept
+    for us in _US_SIGNALS:
+        if us in loc_lower:
+            return True
+
+    # No strong signal either way — keep it (could be US without explicit label)
+    return True
 
 
 # ── Email Utilities ──

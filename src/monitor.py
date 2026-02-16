@@ -10,7 +10,7 @@ from bs4 import BeautifulSoup
 
 from .config import config
 from .tracker import tracker
-from .utils import rate_limit, detect_job_board_type, normalize_company_name, matches_keywords, matches_exclude_keywords
+from .utils import rate_limit, detect_job_board_type, normalize_company_name, matches_keywords, matches_exclude_keywords, score_job_relevance, is_us_location, is_valid_engineering_role
 from .aggregator import adzuna_aggregator
 
 logger = logging.getLogger(__name__)
@@ -51,9 +51,12 @@ class JobMonitor:
         """
         all_new_jobs = []
 
+        # Build company tier lookup for scoring
+        companies = tracker.get_companies()
+        tier_lookup = {c['Company']: c.get('Tier', '') for c in companies}
+
         # Step 1: Scrape company career pages (unless aggregators_only)
         if not aggregators_only:
-            companies = tracker.get_companies()
             logger.info(f"Monitoring {len(companies)} companies for new roles...")
 
             for company in companies:
@@ -82,8 +85,27 @@ class JobMonitor:
             except Exception as e:
                 logger.error(f"Adzuna aggregator failed: {e}")
 
-        # Save to tracker
+        # Step 3: Score, rank, and cap results
+        max_results = config.monitor.get('max_results', 0)
         if all_new_jobs:
+            for job in all_new_jobs:
+                tier = tier_lookup.get(job.get('company', ''), '')
+                job['_score'] = score_job_relevance(job, tier)
+
+            all_new_jobs.sort(key=lambda j: j['_score'], reverse=True)
+
+            if max_results and len(all_new_jobs) > max_results:
+                logger.info(f"Capping results from {len(all_new_jobs)} to top {max_results} by relevance")
+                # Remove URLs of dropped jobs from seen_jobs so they can appear in future runs
+                dropped = all_new_jobs[max_results:]
+                for job in dropped:
+                    self.seen_jobs.discard(job['url'])
+                all_new_jobs = all_new_jobs[:max_results]
+
+            # Clean up internal score field before saving
+            for job in all_new_jobs:
+                del job['_score']
+
             tracker.add_new_roles(all_new_jobs)
             tracker.add_to_global_tracker(all_new_jobs)
             self._save_seen_jobs()
@@ -123,6 +145,15 @@ class JobMonitor:
 
             # Check exclude keywords
             if self._matches_exclude_keywords(job['title']):
+                continue
+
+            # Filter non-US locations
+            if not is_us_location(job.get('location', '')):
+                continue
+
+            # Must be an actual engineering/dev role
+            if not is_valid_engineering_role(job['title']):
+                logger.debug(f"Skipping non-engineering role: {job['title']}")
                 continue
 
             # Add metadata

@@ -328,30 +328,146 @@ class Tracker:
             return roles
 
     def get_contacts_needing_enrichment(self) -> List[str]:
-        """Get list of company names that don't have HM email set."""
+        """Get list of company names that have a domain but no Hiring Manager contact yet."""
         with self.lock:
             if not self.tracker_path.exists():
                 return []
 
             wb = load_workbook(self.tracker_path, read_only=True)
-            ws = wb["Companies"]
 
+            # Build set of companies that already have an HM contact
+            companies_with_hm: set = set()
+            if "Contacts" in wb.sheetnames:
+                ws_contacts = wb["Contacts"]
+                for row in ws_contacts.iter_rows(min_row=2, values_only=True):
+                    if not row[0]:
+                        continue
+                    company = row[0]
+                    contact_type = row[5] if len(row) > 5 else None  # Type column
+                    email = row[3] if len(row) > 3 else None  # Email column
+                    if contact_type == "Hiring Manager" and email:
+                        companies_with_hm.add(company.lower())
+
+            # Return companies that have a domain but no HM contact
+            ws = wb["Companies"]
             companies = []
             for row in ws.iter_rows(min_row=2, values_only=True):
                 company_name = row[0]
                 domain = row[6] if len(row) > 6 else None
 
                 if company_name and domain:
-                    # Check if we have contacts for this company
-                    companies.append(company_name)
+                    if company_name.lower() not in companies_with_hm:
+                        companies.append(company_name)
 
             wb.close()
             return companies
 
     def get_pending_outreach(self) -> List[Dict]:
-        """Get contacts who haven't been emailed yet."""
-        # For now, return empty - we'll implement after contacts module is built
-        return []
+        """Get contacts who haven't been emailed yet.
+
+        Cross-references Contacts sheet with Outreach Log to find contacts
+        that have an email but haven't been sent outreach. Also checks
+        New Roles for role-specific outreach where HM Email is populated.
+        """
+        with self.lock:
+            if not self.tracker_path.exists():
+                return []
+
+            wb = load_workbook(self.tracker_path, read_only=True)
+
+            # 1. Build set of already-emailed (email, role) pairs from Outreach Log
+            emailed = set()
+            ws_log = wb["Outreach Log"]
+            for row in ws_log.iter_rows(min_row=2, values_only=True):
+                if not row[0]:
+                    continue
+                contact_email = row[3]  # Contact Email
+                role_ref = row[6] or ""  # Role Referenced
+                if contact_email:
+                    emailed.add((contact_email.lower(), role_ref.lower()))
+
+            # Also exclude contacts with pending/approved drafts
+            emailed_drafts = set()
+            if "Email Drafts" in wb.sheetnames:
+                ws_drafts = wb["Email Drafts"]
+                for row in ws_drafts.iter_rows(min_row=2, values_only=True):
+                    if not row[0]:
+                        continue
+                    status = row[8]  # Status
+                    if status in ("Pending Review", "Approved"):
+                        email = row[3]  # Contact Email
+                        role = row[7] or ""  # Role Referenced
+                        if email:
+                            emailed_drafts.add((email.lower(), role.lower()))
+
+            # 2. Check New Roles with HM Email populated but outreach not sent
+            pending = []
+            seen_keys = set()
+            ws_roles = wb["New Roles"]
+            for row in ws_roles.iter_rows(min_row=2, values_only=True):
+                if not row[0]:
+                    continue
+                # Columns: Date Found, Company, Role Title, Location, URL,
+                #          Department, Board Type, Status, HM Name, HM Email,
+                #          Outreach Sent?, Notes
+                status = row[7]
+                hm_name = row[8]
+                hm_email = row[9]
+                outreach_sent = row[10]
+
+                if not hm_email or outreach_sent == "Yes":
+                    continue
+                if status in ("Skipped",):
+                    continue
+
+                role_title = row[2] or ""
+                key = (hm_email.lower(), role_title.lower())
+                if key in emailed or key in emailed_drafts or key in seen_keys:
+                    continue
+
+                seen_keys.add(key)
+                pending.append({
+                    'name': hm_name or "",
+                    'email': hm_email,
+                    'company': row[1],
+                    'role': role_title,
+                    'role_url': row[4] or "",
+                    'type': 'Hiring Manager',
+                    'title': '',
+                })
+
+            # 3. Check Contacts sheet for contacts not yet emailed (generic outreach)
+            ws_contacts = wb["Contacts"]
+            contacts_headers = [cell.value for cell in ws_contacts[1]]
+            for row in ws_contacts.iter_rows(min_row=2, values_only=True):
+                if not row[0]:
+                    continue
+                contact = dict(zip(contacts_headers, row))
+                email = contact.get("Email")
+                if not email:
+                    continue
+
+                contact_type = contact.get("Type", "Other")
+                if contact_type not in ("Hiring Manager", "Recruiter"):
+                    continue
+
+                key = (email.lower(), "")  # Generic outreach (no specific role)
+                if key in emailed or key in emailed_drafts or key in seen_keys:
+                    continue
+
+                seen_keys.add(key)
+                pending.append({
+                    'name': contact.get("Name", ""),
+                    'email': email,
+                    'company': contact.get("Company", ""),
+                    'role': None,
+                    'role_url': '',
+                    'type': contact_type,
+                    'title': contact.get("Title", ""),
+                })
+
+            wb.close()
+            return pending
 
     def get_due_followups(self) -> List[Dict]:
         """Get outreach entries that are due for follow-up."""
